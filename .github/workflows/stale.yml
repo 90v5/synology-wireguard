@@ -22,10 +22,10 @@ jobs:
 
     steps:
     - name: Git checkout
-      uses: actions/checkout@v4  # https://github.com/actions/checkout
+      uses: actions/checkout@v5  # https://github.com/actions/checkout
 
     - name: Run stale action
-      uses: actions/stale@v9  # https://github.com/actions/stale
+      uses: actions/stale@v10  # https://github.com/actions/stale
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
         days-before-stale: 90
@@ -43,7 +43,7 @@ jobs:
           security
 
     - name: Run stale action
-      uses: actions/stale@v9  # https://github.com/actions/stale
+      uses: actions/stale@v10  # https://github.com/actions/stale
       with:
         repo-token: ${{ secrets.GITHUB_TOKEN }}
         days-before-stale: 360

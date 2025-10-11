@@ -2,10 +2,10 @@
 # SPDX-FileContributor: Sebastian Thomschke, Vegard IT GmbH
 # SPDX-License-Identifier: Apache-2.0
 #
-# https://docs.github.com/en/actions/using-workflows/workflow-syntax-for-github-actions
+# https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions
 name: Build
 
-on:
+on:  # https://docs.github.com/en/actions/reference/events-that-trigger-workflows
   push:
     branches-ignore:  # build all branches except:
     - 'dependabot/**'  # prevent GHA triggered twice (once for commit to the branch and once for opening/syncing the PR)
@@ -27,20 +27,24 @@ on:
     - '.git*'
     - '.github/*.yml'
   workflow_dispatch:
-    # https://github.blog/changelog/2020-07-06-github-actions-manual-triggers-with-workflow_dispatch/
+    # https://docs.github.com/en/actions/reference/events-that-trigger-workflows#workflow_dispatch
     inputs:
       DSM_VERSION:
         description: 'DSM Version'
         required: true
         default: '7.2'
 
+
 defaults:
   run:
     shell: bash
 
+
 env:
-  SYNO_TOOLKIT_BASE_URL: https://global.download.synology.com/download/ToolChain/toolkit
+  # Index browsing: https://archive.synology.com/download/ToolChain/toolkit
+  SYNO_TOOLKIT_BASE_URL: https://global.synologydownload.com/download/ToolChain/toolkit
   DSM_VERSION: '7.2'
+
 
 jobs:
   ###########################################################
@@ -49,8 +53,9 @@ jobs:
     runs-on: ubuntu-latest
 
     steps:
-    - name: Git checkout
-      uses: actions/checkout@v4  # https://github.com/actions/checkout
+    - name: Git Checkout
+      uses: actions/checkout@v5  # https://github.com/actions/checkout
+
 
     - name: Determine effective DSM version
       run: |
@@ -59,12 +64,14 @@ jobs:
           echo "DSM_VERSION=${{ github.event.inputs.DSM_VERSION }}" >> $GITHUB_ENV
         fi
 
+
     - uses: actions/cache@v4  # https://github.com/actions/cache
       id: cache_synology_toolkit_base_env
       with:
         path: toolkit_tarballs/base_env-*
         key: synology_toolkit_tarballs_DSM${{ env.DSM_VERSION }}_base_env
         lookup-only: true
+
 
     - name: Download Synology Base Toolkit tarball
       if: steps.cache_synology_toolkit_base_env.outputs.cache-hit != 'true'
@@ -123,8 +130,8 @@ jobs:
       run: env | sort
 
 
-    - name: Git checkout
-      uses: actions/checkout@v4  # https://github.com/actions/checkout
+    - name: Git Checkout
+      uses: actions/checkout@v5  # https://github.com/actions/checkout
 
 
     - name: Build [synobuild] Docker image
@@ -140,7 +147,7 @@ jobs:
         key: synology_toolkit_tarballs_DSM${{ env.DSM_VERSION }}_base_env
 
 
-    - uses: actions/cache/restore@v4  # https://github.com/actions/cache
+    - uses: actions/cache@v4  # https://github.com/actions/cache
       with:
         path: toolkit_tarballs/ds.*
         key: synology_toolkit_tarballs_DSM${{ env.DSM_VERSION }}_${{ matrix.PACKAGE_ARCH }}
@@ -152,11 +159,11 @@ jobs:
 
         mkdir -p toolkit_tarballs
         pushd toolkit_tarballs/
-          archive_base_url="https://global.download.synology.com/download/ToolChain/toolkit/$DSM_VERSION"
+          archive_base_url="$SYNO_TOOLKIT_BASE_URL/$DSM_VERSION"
           archive=ds.${{ matrix.PACKAGE_ARCH }}-$DSM_VERSION.dev.txz
-          [[ -f $archive ]] || curl -sSf "$SYNO_TOOLKIT_BASE_URL/$DSM_VERSION/${{ matrix.PACKAGE_ARCH }}/$archive" -o $archive
+          [[ -f $archive ]] || curl -sSf "$archive_base_url/${{ matrix.PACKAGE_ARCH }}/$archive" -o $archive
           archive=ds.${{ matrix.PACKAGE_ARCH }}-$DSM_VERSION.env.txz
-          [[ -f $archive ]] || curl -sSf "$SYNO_TOOLKIT_BASE_URL/$DSM_VERSION/${{ matrix.PACKAGE_ARCH }}/$archive" -o $archive
+          [[ -f $archive ]] || curl -sSf "$archive_base_url/${{ matrix.PACKAGE_ARCH }}/$archive" -o $archive
         popd
 
 
@@ -196,10 +203,13 @@ jobs:
     if: github.ref_name == 'main'
     concurrency: publish-latest-release # https://docs.github.com/en/actions/reference/workflow-syntax-for-github-actions#jobsjob_idconcurrency
 
+    permissions:
+      contents: write
+
     steps:
     - name: Git checkout 
       # only required by "hub release create" to prevent "fatal: Not a git repository"
-      uses: actions/checkout@v4  # https://github.com/actions/checkout
+      uses: actions/checkout@v5  # https://github.com/actions/checkout
 
 
     - name: Download build artifacts
@@ -227,22 +237,13 @@ jobs:
     - name: "Delete previous release"
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # https://cli.github.com/manual/gh_release_delete
       run: |
         set -eux
 
-        api_base_url="$GITHUB_API_URL/repos/$GITHUB_REPOSITORY"
-
         release_name=WireGuard-${WG_VERSION}-DSM${DSM_VERSION}
 
-        # https://hub.github.com/hub-release.1.html
-        hub release delete "${release_name}" || true
-
-        # delete git tag
-        tag_url="$api_base_url/git/refs/tags/${release_name}"
-        if curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -fsLo /dev/null --head "$tag_url"; then
-          echo "Deleting tag [$tag_url]..."
-          curl -H "Authorization: token ${{ secrets.GITHUB_TOKEN }}" -fsSL -X DELETE "$tag_url"
-        fi
+        GH_DEBUG=1 gh release delete "$release_name" --yes --cleanup-tag || true
 
 
     - name: "Create release"
